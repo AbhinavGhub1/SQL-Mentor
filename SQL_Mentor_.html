@@ -56,6 +56,11 @@ th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--ln)}th{colo
 .bar.hard i s{background:var(--bad)}
 .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:14px;font-weight:600}
 .flow span{border:2px solid var(--or);border-radius:999px;padding:5px 14px}.flow em{color:var(--or);font-style:normal}
+details.learn{border:2px solid var(--or);border-radius:18px;padding:14px 18px;background:var(--pn);margin:0 0 14px}
+details.learn summary{cursor:pointer;font-weight:800;color:var(--or);font-size:17px}
+.lbl{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:14px 0 0}
+.tip{border-left:6px solid var(--or2);padding:8px 12px;background:#140a04;border-radius:8px;margin:12px 0 0;font-size:14px}
+.cmp td{vertical-align:top}.cmp td:first-child{color:var(--mut);white-space:nowrap}
 @media(max-width:720px){.hero,.two{grid-template-columns:1fr}nav{margin-left:0}.bar{grid-template-columns:90px 1fr 40px}}
 @media(prefers-reduced-motion:no-preference){.bar i s{transition:width .6s}}
 </style></head><body>
@@ -84,21 +89,59 @@ th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--ln)}th{colo
 
 <section id="practice" hidden>
  <h2>Practice SQL</h2>
- <p class="mut" style="margin-bottom:8px">Choose a command family, then answer its questions.</p>
- 
+ <p class="mut" style="margin-bottom:8px">Choose a command family, read the short guide, then answer its questions.</p>
+
  <div class="tabs" role="group" aria-label="SQL command family" style="margin-top:0">
   <button class="tab" id="bank-dml" aria-pressed="true">DML</button>
   <button class="tab" id="bank-ddl" aria-pressed="false">DDL</button>
+  <button class="tab" id="bank-compare" aria-pressed="false">Compare</button>
   <button class="tab" id="bank-practice" aria-pressed="false">Practice</button>
-</div>
- <div class="chips" id="chips" role="group" aria-label="Topic"></div>
- <div class="card"><p class="mut" id="qn" style="margin-bottom:4px"></p><p style="font-size:20px;font-weight:600;margin:0" id="qt"></p>
-  <div id="choice-list" style="display:grid;gap:10px;margin-top:14px"></div>
-  <p class="mut" style="margin:10px 0 0;font-size:13px" id="table-hint">Tables: Authors, Books, Students, Borrow, StudentProgress</p></div>
- <div class="tabs"><button class="tab" id="m1" aria-pressed="true">Write SQL</button><button class="tab" id="m2" aria-pressed="false">Ask in English</button></div>
- <textarea id="inp" aria-label="Your answer" spellcheck="false"></textarea>
- <div style="margin-top:12px;display:flex;gap:10px"><button class="btn" id="run">Run query</button><button class="btn o" id="next">Next question</button></div>
- <div id="out" aria-live="polite"></div>
+ </div>
+
+ <div id="qa">
+  <div class="chips" id="chips" role="group" aria-label="Topic"></div>
+  <div id="learn"></div>
+  <div class="card"><p class="mut" id="qn" style="margin-bottom:4px"></p><p style="font-size:20px;font-weight:600;margin:0" id="qt"></p>
+   <div id="choice-list" style="display:grid;gap:10px;margin-top:14px"></div>
+   <p class="mut" style="margin:10px 0 0;font-size:13px" id="table-hint">Tables: Authors, Books, Students, Borrow, StudentProgress</p></div>
+  <div class="tabs" id="modetabs"><button class="tab" id="m1" aria-pressed="true">Write SQL</button><button class="tab" id="m2" aria-pressed="false">Ask in English</button></div>
+  <textarea id="inp" aria-label="Your answer" spellcheck="false"></textarea>
+  <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px"><button class="btn" id="run">Run query</button><button class="btn o" id="next">Next question</button><button class="btn o" id="reset" style="display:none">Reset sample database</button></div>
+  <div id="out" aria-live="polite"></div>
+ </div>
+
+ <div id="cmp" hidden>
+  <div class="card">
+   <h2>DML vs DDL: what is the difference?</h2>
+   <p class="mut">Think of the library. <b style="color:var(--ink)">DDL</b> builds the shelves. <b style="color:var(--ink)">DML</b> puts books on the shelves, finds them, changes them and removes them.</p>
+   <div class="tbl cmp"><table>
+    <tr><th></th><th>DML</th><th>DDL</th></tr>
+    <tr><td>Full name</td><td>Data Manipulation Language</td><td>Data Definition Language</td></tr>
+    <tr><td>Works on</td><td>The data (rows) inside tables</td><td>The structure of the database (tables and columns)</td></tr>
+    <tr><td>Commands here</td><td>SELECT, WHERE, ORDER BY, GROUP BY, INNER JOIN, Subqueries, INSERT, UPDATE, DELETE</td><td>CREATE, ALTER, TRUNCATE, DROP</td></tr>
+    <tr><td>Uses WHERE?</td><td>Yes (SELECT, UPDATE, DELETE)</td><td>No</td></tr>
+    <tr><td>Can it be undone?</td><td>Yes, with ROLLBACK inside a transaction</td><td>In MySQL it is saved straight away, so ROLLBACK cannot undo it</td></tr>
+    <tr><td>Library example</td><td><code>INSERT INTO Authors (author_id, author_name) VALUES (5, 'Ravi Pillai');</code></td><td><code>CREATE TABLE Clubs (club_id INT PRIMARY KEY, club_name VARCHAR(50));</code></td></tr>
+    <tr><td>Result</td><td>A row is added</td><td>A table is built</td></tr>
+   </table></div>
+   <p class="mut" style="margin:0">SELECT only reads data. Some books put it in its own group called DQL, but this app lists it with DML.</p>
+  </div>
+  <div class="card" style="margin-top:14px">
+   <h2>DELETE, TRUNCATE and DROP</h2>
+   <div class="tbl cmp"><table>
+    <tr><th>Command</th><th>Family</th><th>Removes</th><th>Table still exists?</th><th>WHERE allowed?</th></tr>
+    <tr><td>DELETE</td><td>DML</td><td>Some or all rows</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>TRUNCATE</td><td>DDL</td><td>All rows</td><td>Yes</td><td>No</td></tr>
+    <tr><td>DROP</td><td>DDL</td><td>The whole table</td><td>No</td><td>No</td></tr>
+   </table></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+   <h2>They work together</h2>
+   <p>First DDL builds the table, then DML fills it and reads it.</p>
+   <pre id="demo-pre"></pre>
+   <button class="btn" data-demo="1">Try this in Practice</button>
+  </div>
+ </div>
 </section>
 
 <section id="mine" hidden><h2 id="mt"></h2><div class="grid" id="ms"></div>
@@ -191,31 +234,30 @@ function show(p){pg.forEach(x=>{$('#'+x).hidden=x!=p});document.querySelectorAll
   $('#fm').innerHTML=Object.entries(m).map(([k,v])=>`<div class="bar" style="grid-template-columns:150px 1fr 30px"><span>${k}</span><i><s style="width:${v/mx*100}%"></s></i><b>${v}</b></div>`).join('')}
  if(p=='practice')draw()}
 
- function draw(){const q=activeBank[cur]; const isPractice = bank === 'practice';
-  
-  if(!q && !isPractice) return;
-
-  $('#qn').textContent = isPractice ? '' : 'Question '+(cur+1)+' of '+activeBank.length+' · '+q.t;
-  $('#qt').textContent = isPractice ? 'Explore the sample library database.  SHOW TABLES , DESCRIBE TABLES, or Display Tables.' : q.q;
-  
-  $('#chips').innerHTML = isPractice ? '' : [...new Set(activeBank.map(x=>x.t))].map(t=>`<button class="chip" aria-pressed="${filt==t}" data-t="${t}">${t}</button>`).join('');
+ function draw(){
+  const isP=bank==='practice',isC=bank==='compare',q=activeBank[cur];
+  ['dml','ddl','compare','practice'].forEach(k=>$('#bank-'+k).setAttribute('aria-pressed',bank==k));
+  $('#qa').hidden=isC;$('#cmp').hidden=!isC;
+  if(isC){$('#demo-pre').textContent=DEMO;return}
+  if(!q&&!isP)return;
+  $('#qn').textContent=isP?'':'Question '+(cur+1)+' of '+activeBank.length+' \u00b7 '+q.t;
+  $('#qt').textContent=isP?'Practice area: run almost any SQL command on the sample Library database. Pick an example or write your own.':q.q;
+  $('#chips').innerHTML=isP?EX.map((e,i)=>`<button class="chip" data-ex="${i}">${esc(e[0])}</button>`).join(''):[...new Set(activeBank.map(x=>x.t))].map(t=>`<button class="chip" aria-pressed="${filt==t}" data-t="${t}">${t}</button>`).join('');
+  $('#learn').innerHTML=isP?'':learnHTML(q.t);
   $('#choice-list').innerHTML='';
-  $('#table-hint').hidden = isPractice ? true : !!q.options;
-  
+  const th=$('#table-hint');th.hidden=isP?false:!!q.options;
+  if(isP)th.textContent=engine==='ready'?'Powered by SQLite. Tables: Authors, Books, Students, Borrow, StudentProgress. Your changes stay until you press Reset or reload the page.':engine==='loading'?'Starting the SQLite engine...':'The SQLite engine could not load (the internet is needed once). Basic mode: SHOW TABLES, DESC table and SELECT * FROM table only.';
+  else th.textContent='Tables: Authors, Books, Students, Borrow, StudentProgress';
+  $('#modetabs').style.display=isP?'none':'';
   $('#m1').setAttribute('aria-pressed',mode==1);$('#m2').setAttribute('aria-pressed',mode==2);
-  $('#bank-dml').setAttribute('aria-pressed',bank=='dml');
-  $('#bank-ddl').setAttribute('aria-pressed',bank=='ddl');
-  $('#bank-practice').setAttribute('aria-pressed',bank=='practice');
-  
-  $('#inp').placeholder=mode==1?'Write the SQL command...':'Type your question in plain English';
-  $('#inp').style.fontFamily=mode==1?'':'Sora,sans-serif';
-  
-  // Hide Next button in practice mode
-  $('#next').style.display = isPractice ? 'none' : 'block';
+  $('#inp').placeholder=isP?'Write any SQL command, then press Run (Ctrl+Enter also works)':mode==1?'Write the SQL command...':'Type your question in plain English';
+  $('#inp').style.fontFamily=isP||mode==1?'':'Sora,sans-serif';
+  $('#next').style.display=isP?'none':'block';
+  $('#reset').style.display=isP&&engine==='ready'?'block':'none';
   $('#out').innerHTML='';
 }
 
- function setBank(next){bank=next;if(next == 'ddl') {activeBank = DDL_Q;} else if(next == 'practice') {activeBank = [];} else {activeBank = [...Q, ...DML_Q];}cur=0;filt=null;$('#inp').value='';draw();}
+ function setBank(next){bank=next;activeBank=next=='ddl'?DDL_Q:next=='dml'?[...Q,...DML_Q]:[];cur=0;filt=null;$('#inp').value='';draw();}
 
  function go(i){cur=(i+activeBank.length)%activeBank.length;$('#inp').value='';draw()}
 function mentor(h){return `<div class="mentor"><svg viewBox="0 0 120 140" fill="none" stroke="#e86318" stroke-width="9" aria-hidden="true"><ellipse cx="60" cy="25" rx="45" ry="16"/><path d="M15 25V115A45 16 0 0 0 105 115V25M15 55A45 16 0 0 0 105 55M15 85A45 16 0 0 0 105 85"/></svg><div class="bubble">${h}</div></div>`}
@@ -255,7 +297,7 @@ const DB = {
   }
 };
 
-function runSandbox(sql) {
+function runBasic(sql) {
   const normalized = sql.trim().replace(/;\s*$/, '').trim();
   const showTables = normalized.match(/^show\s+tables$/i);
   const descMatch = normalized.match(/^(?:desc|describe)\s+([\w]+)$/i);
@@ -307,6 +349,165 @@ function runSandbox(sql) {
   }
   $('#out').innerHTML = mentor(h);
 }
+/* ---------- Short guides shown before the questions ---------- */
+const LEARN={
+SELECT:{fam:'DML',what:'SELECT reads data from a table. You choose the columns you want to see, and the table is not changed. It is like asking the library: "show me these details".',syn:'SELECT column1, column2\nFROM table_name;\n\nSELECT * FROM table_name;   -- * means all columns',ex:'SELECT title, price FROM Books;'},
+WHERE:{fam:'DML',what:'WHERE filters the rows. Only the rows that pass your test are kept. It is also used with UPDATE and DELETE.',syn:'SELECT columns\nFROM table_name\nWHERE column operator value;',ex:"SELECT title FROM Books WHERE year > 2020;",tip:"Operators you can use: <code>=</code> <code>&lt;&gt;</code> <code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code> <code>AND</code> <code>OR</code> <code>LIKE</code> <code>IN</code> <code>BETWEEN</code>. Put text in single quotes, like <code>category = 'Fiction'</code>."},
+'ORDER BY':{fam:'DML',what:'ORDER BY sorts the result. ASC puts the smallest first (this is the default). DESC puts the biggest first.',syn:'SELECT columns\nFROM table_name\nORDER BY column ASC;   -- or DESC',ex:'SELECT title, price FROM Books ORDER BY price DESC;'},
+'GROUP BY':{fam:'DML',what:'GROUP BY puts rows with the same value into one group, so you can count or total each group with COUNT, SUM, AVG, MIN or MAX.',syn:'SELECT column, COUNT(*)\nFROM table_name\nGROUP BY column;',ex:'SELECT category, COUNT(*) FROM Books GROUP BY category;',tip:'To filter the groups, use <code>HAVING</code> after GROUP BY (WHERE filters rows before they are grouped).'},
+'INNER JOIN':{fam:'DML',what:'INNER JOIN combines rows from two tables when a column matches, for example the author_id in Books and in Authors. Rows with no match are left out.',syn:'SELECT table1.column, table2.column\nFROM table1\nINNER JOIN table2\n  ON table1.key_column = table2.key_column;',ex:'SELECT title, author_name\nFROM Books\nINNER JOIN Authors\n  ON Books.author_id = Authors.author_id;'},
+Subqueries:{fam:'DML',what:'A subquery is a query inside another query, written in brackets. The inner query runs first and the outer query uses its answer.',syn:'SELECT columns\nFROM table_name\nWHERE column operator (SELECT column FROM table_name);',ex:'SELECT title FROM Books\nWHERE price > (SELECT AVG(price) FROM Books);'},
+INSERT:{fam:'DML',what:'INSERT adds a new row to a table.',syn:'INSERT INTO table_name (column1, column2)\nVALUES (value1, value2);',ex:"INSERT INTO Authors (author_id, author_name)\nVALUES (5, 'Ravi Pillai');",tip:'The values must be in the same order as the columns. Text and dates go in single quotes.'},
+UPDATE:{fam:'DML',what:'UPDATE changes values in rows that already exist.',syn:'UPDATE table_name\nSET column1 = value1, column2 = value2\nWHERE condition;',ex:'UPDATE Books SET price = 500 WHERE book_id = 1;',tip:'Always add WHERE. Without it, <b>every row</b> in the table is changed.'},
+DELETE:{fam:'DML',what:'DELETE removes rows from a table. The table itself stays.',syn:'DELETE FROM table_name\nWHERE condition;',ex:'DELETE FROM Authors WHERE author_id = 5;',tip:'Always add WHERE. Without it, <b>every row</b> is deleted.'},
+CREATE:{fam:'DDL',what:'CREATE TABLE builds a new table. You choose its name, its columns, the data type of each column, and rules called constraints such as PRIMARY KEY, UNIQUE, FOREIGN KEY and CHECK.',syn:'CREATE TABLE table_name (\n  column1 datatype constraint,\n  column2 datatype constraint\n);',ex:'CREATE TABLE Clubs (\n  club_id INT PRIMARY KEY,\n  club_name VARCHAR(50)\n);',tip:'Common data types: <code>INT</code> (whole numbers), <code>DECIMAL(10,2)</code> (money), <code>VARCHAR(n)</code> (text up to n letters), <code>DATE</code>.'},
+ALTER:{fam:'DDL',what:'ALTER TABLE changes the structure of a table that already exists. You can add, rename or remove a column.',syn:'ALTER TABLE table_name ADD column_name datatype;\nALTER TABLE table_name RENAME COLUMN old_name TO new_name;\nALTER TABLE table_name DROP COLUMN column_name;',ex:'ALTER TABLE Books ADD rating INT;',tip:'In MySQL, <code>MODIFY COLUMN</code> changes a data type. The SQLite Practice area cannot do that one.'},
+TRUNCATE:{fam:'DDL',what:'TRUNCATE TABLE removes all the rows from a table but keeps the empty table, with its columns, ready to use again.',syn:'TRUNCATE TABLE table_name;',ex:'TRUNCATE TABLE Clubs;',tip:'There is no WHERE, so it always clears everything. SQLite has no TRUNCATE, so in the Practice area the mentor runs <code>DELETE FROM</code> for you.'},
+DROP:{fam:'DDL',what:'DROP TABLE deletes the whole table, both its structure and all its data.',syn:'DROP TABLE table_name;\n\nDROP TABLE IF EXISTS table_name;   -- no error if it is missing',ex:'DROP TABLE Clubs;',tip:'This cannot be undone in MySQL. In the Practice area, press <b>Reset sample database</b> to get your tables back.'}
+};
+function learnHTML(t){const L=LEARN[t];if(!L)return'';
+ return `<details class="learn" id="learn-d"${learnOpen?' open':''}><summary>About ${esc(t)} <span class="mut">· ${L.fam}</span></summary><p style="margin:10px 0 0">${L.what}</p><p class="lbl">Syntax</p><pre>${esc(L.syn)}</pre><p class="lbl">Example</p><pre>${esc(L.ex)}</pre>${L.tip?`<div class="tip">${L.tip}</div>`:''}</details>`}
+let learnOpen=true;
+document.addEventListener('toggle',e=>{if(e.target.id==='learn-d')learnOpen=e.target.open},true);
+
+/* ---------- Practice area: example chips ---------- */
+const DEMO="-- DDL: build the table\nCREATE TABLE Clubs (club_id INT PRIMARY KEY, club_name VARCHAR(50));\n-- DML: add a row\nINSERT INTO Clubs (club_id, club_name) VALUES (1, 'Chess Club');\n-- DML: read it back\nSELECT * FROM Clubs;";
+const EX=[
+['SHOW TABLES','SHOW TABLES;'],
+['DESC Books','DESC Books;'],
+['SELECT','SELECT * FROM Books;'],
+['WHERE + ORDER BY','SELECT title, price FROM Books WHERE price > 400 ORDER BY price DESC;'],
+['GROUP BY','SELECT category, COUNT(*) AS total FROM Books GROUP BY category;'],
+['INNER JOIN','SELECT title, author_name FROM Books INNER JOIN Authors ON Books.author_id = Authors.author_id;'],
+['LEFT JOIN','SELECT author_name, title FROM Authors LEFT JOIN Books ON Authors.author_id = Books.author_id;'],
+['Subquery','SELECT title FROM Books WHERE price > (SELECT AVG(price) FROM Books);'],
+['INSERT',"INSERT INTO Authors (author_id, author_name) VALUES (5, 'Ravi Pillai');"],
+['UPDATE','UPDATE Books SET price = 500 WHERE book_id = 1;'],
+['DELETE','DELETE FROM Authors WHERE author_id = 5;'],
+['CREATE','CREATE TABLE Clubs (club_id INT PRIMARY KEY, club_name VARCHAR(50));'],
+['ALTER','ALTER TABLE Clubs ADD members INT;'],
+['TRUNCATE','TRUNCATE TABLE Clubs;'],
+['DROP','DROP TABLE Clubs;']
+];
+
+/* ---------- SQLite engine (sql.js) for the Practice area ---------- */
+// Loaded from the internet once per page load. For offline use, download sql-wasm.js and sql-wasm.wasm
+// into the same folder as this file and change SQLJS_BASE to './'.
+const SQLJS_BASE='https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/';
+const SEED=`
+CREATE TABLE Authors (author_id INTEGER PRIMARY KEY, author_name VARCHAR(100));
+CREATE TABLE Books (book_id INTEGER PRIMARY KEY, title VARCHAR(200), price DECIMAL(10,2), year INT, category VARCHAR(80), author_id INT, FOREIGN KEY (author_id) REFERENCES Authors(author_id));
+CREATE TABLE Students (student_id INTEGER PRIMARY KEY, student_name VARCHAR(100), email VARCHAR(150) UNIQUE);
+CREATE TABLE Borrow (borrow_id INTEGER PRIMARY KEY, student_id INT, book_id INT, borrow_date DATE, return_date DATE, FOREIGN KEY (student_id) REFERENCES Students(student_id), FOREIGN KEY (book_id) REFERENCES Books(book_id));
+CREATE TABLE StudentProgress (progress_id INTEGER PRIMARY KEY, student_id INT, topic VARCHAR(80), attempts INT, correct_answers INT, FOREIGN KEY (student_id) REFERENCES Students(student_id));
+INSERT INTO Authors VALUES (1,'Meera Nair'),(2,'Arun Das'),(3,'Kavita Rao'),(4,'Isha Menon');
+INSERT INTO Books VALUES (1,'The Silent Shore',450.00,2021,'Fiction',1),(2,'Code & Chai',620.00,2023,'Technology',2),(3,'River of Stars',380.00,2022,'Fiction',1),(4,'Atoms Made Easy',340.00,2020,'Science',3),(5,'Learn Python Fast',540.00,2019,'Technology',2),(6,'Tales of Kerala',290.00,2018,'Fiction',3);
+INSERT INTO Students VALUES (101,'Anjali','anjali@example.com'),(102,'Rahul','rahul@example.com'),(103,'Nila','nila@example.com');
+INSERT INTO Borrow VALUES (1,101,1,'2026-09-01',NULL),(2,102,2,'2026-09-04','2026-09-10'),(3,103,3,'2026-09-08',NULL),(4,101,2,'2026-09-12',NULL),(5,102,1,'2026-09-15',NULL);
+INSERT INTO StudentProgress VALUES (1,101,'SELECT',8,6),(2,102,'DDL',5,4),(3,103,'JOIN',6,3);
+`;
+let SQLJS=null,SDB=null,engine='loading';
+function resetDb(){if(SDB)SDB.close();SDB=new SQLJS.Database();SDB.run('PRAGMA foreign_keys = ON;');SDB.exec(SEED)}
+function loadEngine(){
+ const done=s=>{engine=s;if(bank==='practice')draw()};
+ const s=document.createElement('script');s.src=SQLJS_BASE+'sql-wasm.js';
+ s.onload=()=>initSqlJs({locateFile:f=>SQLJS_BASE+f}).then(L=>{SQLJS=L;resetDb();done('ready')}).catch(()=>done('failed'));
+ s.onerror=()=>done('failed');
+ document.head.appendChild(s)}
+
+function splitSql(s){const out=[];let cur='',q=null;
+ for(let i=0;i<s.length;i++){const ch=s[i];
+  if(q){cur+=ch;if(ch===q){if(s[i+1]===q){cur+=s[++i]}else q=null}continue}
+  if(ch==="'"||ch==='"'||ch==='`'){q=ch;cur+=ch;continue}
+  if(ch==='-'&&s[i+1]==='-'){while(i<s.length&&s[i]!=='\n')i++;cur+='\n';continue}
+  if(ch==='/'&&s[i+1]==='*'){const e=s.indexOf('*/',i+2);i=e<0?s.length:e+1;cur+=' ';continue}
+  if(ch===';'){if(cur.trim())out.push(cur.trim());cur='';continue}
+  cur+=ch}
+ if(cur.trim())out.push(cur.trim());return out}
+
+// MySQL-style commands that SQLite does not have are translated here.
+function translate(st){let m;
+ if(/^show\s+tables$/i.test(st))return{sql:"SELECT name AS Tables_in_library FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"};
+ if(m=st.match(/^(?:desc|describe|show\s+columns\s+from)\s+(\w+)$/i))return{desc:m[1]};
+ if(m=st.match(/^show\s+create\s+table\s+(\w+)$/i))return{sql:`SELECT sql AS "Create Table" FROM sqlite_master WHERE type='table' AND lower(name)=lower('${m[1]}')`};
+ if(/^show\s+databases$/i.test(st))return{info:'This practice area has one sample database, the Library database. Run <code>SHOW TABLES;</code> to see what is inside it.'};
+ if(/^use\s+\w+$/i.test(st))return{info:'There is only one sample database here, so USE is not needed. Your tables are ready.'};
+ if(/^(create|drop)\s+(database|schema)\b/i.test(st))return{error:'CREATE DATABASE and DROP DATABASE are not available here. The practice area has one sample Library database. Use CREATE TABLE and DROP TABLE instead.'};
+ if(m=st.match(/^truncate(?:\s+table)?\s+(\w+)$/i))return{sql:`DELETE FROM ${m[1]}`,kind:'truncate',table:m[1],note:`SQLite has no TRUNCATE command, so the mentor ran <code>DELETE FROM ${esc(m[1])}</code> for you. The result is the same here: every row is removed and the table stays.`};
+ if(m=st.match(/^rename\s+table\s+(\w+)\s+to\s+(\w+)$/i))return{sql:`ALTER TABLE ${m[1]} RENAME TO ${m[2]}`};
+ if(/^alter\s+table\s+\w+\s+(modify|change)\b/i.test(st))return{error:'MODIFY and CHANGE are MySQL-only. This practice area uses SQLite, which supports ADD column, RENAME COLUMN, DROP COLUMN and RENAME TO.'};
+ return{sql:st.replace(/\bint(?:eger)?\s+primary\s+key\s+auto_increment\b/ig,'INTEGER PRIMARY KEY AUTOINCREMENT')}}
+
+function hint(msg){let m;
+ if(m=msg.match(/no such table: (\S+)/i))return`There is no table called <code>${esc(m[1])}</code>. Run <code>SHOW TABLES;</code> to see the table names.`;
+ if(m=msg.match(/table (\w+) has no column named (\w+)/i))return`Table <code>${esc(m[1])}</code> has no column called <code>${esc(m[2])}</code>. Run <code>DESC ${esc(m[1])};</code> to see its columns.`;
+ if(m=msg.match(/no such column: (\S+)/i))return`The column <code>${esc(m[1])}</code> was not found. Run <code>DESC table_name;</code> to see the column names.`;
+ if(/already exists/i.test(msg))return'That name is already taken. Choose another name, or use <code>DROP TABLE</code> first.';
+ if(/UNIQUE constraint failed/i.test(msg))return'A value you tried to save must be unique, but it already exists in that column.';
+ if(/FOREIGN KEY constraint failed/i.test(msg))return'This table is linked to another table. You cannot add a row that points to something that does not exist, and you cannot remove a row that other rows still use. Remove the linked rows first.';
+ if(/NOT NULL constraint failed/i.test(msg))return'A column that cannot be empty was left empty.';
+ if(/CHECK constraint failed/i.test(msg))return'A value broke a CHECK rule that the table has.';
+ if(m=msg.match(/no such function: (\w+)/i)){const f=m[1].toUpperCase();return f==='NOW'||f==='CURDATE'?`<code>${f}()</code> is a MySQL function. In this practice area use <code>date('now')</code> or <code>datetime('now')</code>.`:f==='CONCAT'?`<code>CONCAT()</code> is a MySQL function. Here, join text with <code>||</code>, like <code>first || ' ' || last</code>.`:`The function <code>${esc(f)}</code> is not available in this practice area (SQLite).`}
+ if(/incomplete input/i.test(msg))return'The command stops too early. Check that every ( has a ) and every quote is closed.';
+ if(/syntax error/i.test(msg))return'SQL could not understand the command. Check the spelling of keywords, the commas between columns, the brackets and quotes, and that no part is missing (for example FROM).';
+ return''}
+
+function runStmt(sql){const s=SDB.prepare(sql);try{const cols=s.getColumnNames(),rows=[];let truncated=false;
+  while(s.step()){rows.push(s.get());if(rows.length>=500){truncated=true;break}}
+  return{cols,rows,truncated}}finally{s.free()}}
+function resultTable(r,noCount){const cell=c=>c===null?'<span class="mut">NULL</span>':esc(c);
+ return`<div class="tbl"><table><thead><tr>${r.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr>${row.map(c=>`<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`+(noCount?'':`<p class="mut">${r.rows.length} row${r.rows.length==1?'':'s'}${r.truncated?' (showing the first 500)':''}.</p>`)}
+function realTable(name){const r=SDB.exec(`SELECT name FROM sqlite_master WHERE type IN ('table','view') AND lower(name)=lower('${name}')`);return r.length?r[0].values[0][0]:null}
+function descHtml(name){const real=realTable(name);
+ if(!real)return`<span class="badge bad">Table not found</span><p>Table <code>${esc(name)}</code> does not exist. Run <code>SHOW TABLES;</code> to see the tables.</p>`;
+ const r=runStmt(`SELECT name AS Field, type AS Type, CASE WHEN "notnull"=1 OR pk>0 THEN 'NO' ELSE 'YES' END AS "Null", CASE WHEN pk>0 THEN 'PRI' ELSE '' END AS "Key", dflt_value AS "Default" FROM pragma_table_info('${real}')`);
+ return`<span class="badge">Table structure: ${esc(real)}</span>`+resultTable(r,true)}
+function previewTable(name){try{const real=realTable(name);if(!real)return'';
+ return`<p style="margin:14px 0 0"><b>${esc(real)} now (first 10 rows):</b></p>`+resultTable(runStmt(`SELECT * FROM "${real}" LIMIT 10`),true)}catch(e){return''}}
+function doneMsg(verb,sql,n){const rw=x=>x+' row'+(x==1?'':'s');let m;
+ if(verb==='insert'||verb==='replace')return rw(n)+' inserted.';
+ if(verb==='update')return rw(n)+' updated.';
+ if(verb==='delete')return rw(n)+' deleted.';
+ if(verb==='truncate')return rw(n)+' removed. The table is now empty but still exists.';
+ if(verb==='create'){m=sql.match(/^create\s+(?:temp\w*\s+)?(?:unique\s+)?(table|index|view|trigger)\s+(?:if\s+not\s+exists\s+)?["`]?(\w+)/i);return m?`${m[1][0].toUpperCase()+m[1].slice(1).toLowerCase()} <code>${esc(m[2])}</code> created.`:'Created.'}
+ if(verb==='alter'){m=sql.match(/^alter\s+table\s+["`]?(\w+)/i);return m?`Table <code>${esc(m[1])}</code> changed.`:'Table changed.'}
+ if(verb==='drop'){m=sql.match(/^drop\s+(table|index|view|trigger)\s+(?:if\s+exists\s+)?["`]?(\w+)/i);return m?`${m[1][0].toUpperCase()+m[1].slice(1).toLowerCase()} <code>${esc(m[2])}</code> dropped (deleted).`:'Dropped.'}
+ if(verb==='begin')return'Transaction started. <code>COMMIT;</code> keeps your changes and <code>ROLLBACK;</code> undoes them.';
+ if(verb==='commit'||verb==='end')return'Changes saved.';
+ if(verb==='rollback')return'Changes undone.';
+ return'Done.'}
+const TOUCH=[/^insert\s+(?:or\s+\w+\s+)?into\s+["`]?(\w+)/i,/^replace\s+into\s+["`]?(\w+)/i,/^update\s+(?:or\s+\w+\s+)?["`]?(\w+)/i,/^delete\s+from\s+["`]?(\w+)/i,/^create\s+table\s+(?:if\s+not\s+exists\s+)?["`]?(\w+)/i,/^alter\s+table\s+["`]?(\w+)/i];
+
+function runSqlite(text){
+ const trig=/\bcreate\s+(?:temp\w*\s+)?trigger\b/i.test(text);
+ const stmts=trig?[text.replace(/;\s*$/,'').trim()]:splitSql(text);
+ if(!stmts.length||!stmts[0]){$('#out').innerHTML=mentor('<span class="badge bad">Empty</span><p>Write a command first, then press Run.</p>');return}
+ let h='',touched=null;
+ for(let i=0;i<stmts.length;i++){const st=stmts[i];
+  if(stmts.length>1)h+=`<p class="mut" style="margin:${i?'18px':'0'} 0 0">Statement ${i+1} of ${stmts.length}</p><pre>${esc(st)}</pre>`;
+  const t=trig?{sql:st}:translate(st);
+  if(t.info){h+=`<span class="badge">Note</span><p>${t.info}</p>`;continue}
+  if(t.error){h+=`<span class="badge bad">Not available</span><p>${t.error}</p>`;if(i<stmts.length-1)h+=`<p class="mut">The remaining statements were not run.</p>`;break}
+  if(t.desc){h+=descHtml(t.desc);continue}
+  try{
+   const sql=t.sql,verb=t.kind||((sql.match(/^\s*(\w+)/)||[,''])[1].toLowerCase());
+   if(trig){SDB.exec(sql);h+=`<span class="badge">Done</span><p>Trigger created.</p>`;continue}
+   const r=runStmt(sql);
+   if(r.cols.length)h+=`<span class="badge">Query result</span>`+resultTable(r);
+   else{h+=`<span class="badge">Done</span><p>${doneMsg(verb,sql,SDB.getRowsModified())}</p>`;
+    if(t.note)h+=`<p class="mut">${t.note}</p>`;
+    if(t.table)touched=t.table;else for(const re of TOUCH){const m=sql.match(re);if(m){touched=m[1];break}}}
+  }catch(e){const msg=String(e.message||e);
+   h+=`<span class="badge bad">Error</span><p><code>${esc(msg)}</code></p>`;const hn=hint(msg);if(hn)h+=`<p><b>Hint:</b> ${hn}</p>`;
+   if(i<stmts.length-1)h+=`<p class="mut">The remaining statements were not run.</p>`;break}}
+ if(touched)h+=previewTable(touched);
+ $('#out').innerHTML=mentor(h)}
+
+function runSandbox(sql){
+ if(engine==='ready')return runSqlite(sql);
+ if(engine==='loading'){$('#out').innerHTML=mentor('<span class="badge">Please wait</span><p>The SQLite engine is still starting. Try again in a moment.</p>');return}
+ runBasic(sql)}
+
 function run(){
   const v=$('#inp').value.trim();
   if(!v){$('#out').innerHTML=mentor('<span class="badge bad">Empty</span><p>Write a query or a question first, then press Run.</p>');return}
@@ -329,11 +530,17 @@ function run(){
  $('#out').innerHTML=mentor(h);const u=$('#use');if(u)u.onclick=()=>{mode=1;draw();$('#inp').value=q.sql}}
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
  if(b.dataset.p)show(b.dataset.p);if(b.dataset.go)show(b.dataset.go);
+ if(b.dataset.ex!==undefined){$('#inp').value=EX[+b.dataset.ex][1];$('#out').innerHTML='';$('#inp').focus()}
+ if(b.dataset.demo){setBank('practice');$('#inp').value=DEMO;$('#inp').focus()}
  if(b.dataset.t){filt=filt==b.dataset.t?null:b.dataset.t;const i=activeBank.findIndex(x=>x.t==filt);if(i>=0)go(i);else draw()}});
 $('#m1').onclick=()=>{mode=1;draw()};$('#m2').onclick=()=>{mode=2;draw()};
 $('#bank-dml').onclick=()=>setBank('dml');
 $('#bank-ddl').onclick=()=>setBank('ddl');
 $('#bank-practice').onclick=()=>setBank('practice');
+$('#bank-compare').onclick=()=>setBank('compare');
+$('#reset').onclick=()=>{if(engine!=='ready')return;resetDb();$('#out').innerHTML=mentor('<span class="badge">Reset</span><p>The sample Library database is back to how it started.</p>')};
+$('#inp').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();run()}});
+loadEngine();
 $('#run').onclick=run;$('#next').onclick=()=>go(cur+1);$('#nm').oninput=()=>{};
 show('home');
 </script></body></html>
