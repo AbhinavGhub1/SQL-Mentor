@@ -1,0 +1,15 @@
+{
+  "name": "sql-mentor-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SQL Mentor educational full-stack starter",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js", "check": "node --check server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "mysql2": "^3.12.0"
+  }
+}
