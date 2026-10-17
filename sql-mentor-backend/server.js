@@ -27,6 +27,49 @@ const pool = mysql.createPool({
 const id = () => crypto.randomUUID();
 const cleanName = (value) => String(value || '').trim().replace(/\s+/g, ' ').slice(0, 50);
 
+const OpenAI = require("openai");
+
+const ai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+app.post("/api/ai-help", async (req, res) => {
+  try {
+    const { question, sql, context } = req.body;
+
+    if (!question || typeof question !== "string") {
+      return res.status(400).json({
+        error: "Please enter a question."
+      });
+    }
+
+
+    const response = await ai.responses.create({
+      model: "gpt-5.5",
+      instructions: `
+        You are SQL Mentor, a friendly database tutor.
+        Teach SQL clearly with examples.
+        Help students understand errors and learn step by step.
+        Use MySQL syntax.
+        Never claim to have executed a query.
+        Explain dangerous commands such as DROP and TRUNCATE.
+      `,
+      input: `
+        Student question: ${question}
+        Current SQL: ${sql || "(not provided)"}
+        Database context: ${context || "(not provided)"}
+      `
+    });
+
+    res.json({ answer: response.output_text });
+  } catch (error) {
+    console.error("AI request failed:", error.message);
+    res.status(500).json({
+      error: "AI help is temporarily unavailable."
+    });
+  }
+});
+
 async function ensureAppTables() {
   await pool.query(`CREATE TABLE IF NOT EXISTS students (
     id CHAR(36) PRIMARY KEY,
@@ -201,3 +244,4 @@ async function start() {
   app.listen(port, () => console.log(`SQL Mentor running on http://localhost:${port}`));
 }
 start().catch((e) => { console.error('Startup failed:', e.message); process.exit(1); });
+
