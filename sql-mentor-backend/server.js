@@ -1,247 +1,570 @@
+
 require('dotenv').config();
+
 const express = require('express');
 const helmet = require('helmet');
+const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
-const mysql = require('mysql2/promise');
+const { DatabaseSync } = require('node:sqlite');
 
 const app = express();
-app.disable('x-powered-by');
-app.use(helmet({ contentSecurityPolicy: false })); // CSP can be tightened after moving inline JS/CSS to files.
-app.use(express.json({ limit: '20kb' }));
-app.use(express.static(path.join(__dirname, 'public')));
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 8,
-  queueLimit: 0,
-  multipleStatements: false,
-  charset: 'utf8mb4'
-});
+app.use(cors({ origin: '*' })); // Restrict origins before public deployment.
+app.disable('x-powered-by');
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '20kb' }));
+
+const PORT = Number(process.env.PORT || 3000);
+
+// SQLite database locations.
+const DATA_DIR = path.join(__dirname, 'data');
+const STUDENT_DB_DIR = path.join(DATA_DIR, 'student_dbs');
+
+fs.mkdirSync(STUDENT_DB_DIR, { recursive: true });
+
+const mainDb = new DatabaseSync(path.join(DATA_DIR, 'sql-mentor.db'));
+mainDb.exec('PRAGMA foreign_keys = ON;');
 
 const id = () => crypto.randomUUID();
-const cleanName = (value) => String(value || '').trim().replace(/\s+/g, ' ').slice(0, 50);
 
-const OpenAI = require("openai");
+const cleanName = value =>
+  String(value || '').trim().replace(/\s+/g, ' ').slice(0, 50);
 
-const ai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+// Initialize OpenAI only when an API key is configured.
+const OpenAI = require('openai');
+const ai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'SQL_Mentor_newest.html'));
 });
 
-app.post("/api/ai-help", async (req, res) => {
-  try {
-    const { question, sql, context } = req.body;
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'SQL Mentor API', database: 'SQLite' });
+});
 
-    if (!question || typeof question !== "string") {
+// Main application tables.
+mainDb.exec(`
+  CREATE TABLE IF NOT EXISTS students (
+    id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    student_db TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id TEXT NOT NULL,
+    topic TEXT NOT NULL DEFAULT 'General',
+    question_text TEXT NOT NULL DEFAULT '',
+    sql_text TEXT NOT NULL,
+    succeeded INTEGER NOT NULL DEFAULT 0,
+    rows_affected INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_attempts_student_date
+  ON attempts(student_id, created_at);
+`);
+
+const LIBRARY_SCHEMA = `
+Authors(author_id INTEGER PRIMARY KEY, author_name TEXT NOT NULL)
+Books(book_id INTEGER PRIMARY KEY, title TEXT NOT NULL, price REAL, year INTEGER, category TEXT, author_id INTEGER)
+Students(student_id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)
+Borrow(borrow_id INTEGER PRIMARY KEY, student_id INTEGER, book_id INTEGER, borrow_date TEXT, return_date TEXT)
+StudentProgress(progress_id INTEGER PRIMARY KEY, topic TEXT, attempts INTEGER, correct INTEGER)
+`;
+
+function getStudentDb(dbName) {
+  if (!/^sqlm_[a-f0-9]{32}$/.test(dbName)) {
+    throw new Error('Invalid student database identifier.');
+  }
+
+  const dbPath = path.join(STUDENT_DB_DIR, `${dbName}.db`);
+  const db = new DatabaseSync(dbPath);
+
+  db.exec('PRAGMA foreign_keys = ON;');
+  return db;
+}
+
+function seedStudentDatabase(dbName) {
+  const db = getStudentDb(dbName);
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS Authors (
+        author_id INTEGER PRIMARY KEY,
+        author_name TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS Books (
+        book_id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        price REAL,
+        year INTEGER,
+        category TEXT,
+        author_id INTEGER,
+        FOREIGN KEY (author_id) REFERENCES Authors(author_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS Students (
+        student_id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS Borrow (
+        borrow_id INTEGER PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        book_id INTEGER NOT NULL,
+        borrow_date TEXT,
+        return_date TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS StudentProgress (
+        progress_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic TEXT NOT NULL DEFAULT 'General',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        correct INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Seed only when the sample table is empty.
+    const count = db.prepare(
+      'SELECT COUNT(*) AS total FROM Authors'
+    ).get().total;
+
+    if (count === 0) {
+      db.exec(`
+        INSERT INTO Authors VALUES
+          (1, 'Meera Nair'),
+          (2, 'Arun Das'),
+          (3, 'Kavya Menon');
+
+        INSERT INTO Books VALUES
+          (1, 'The Silent Shore', 350.00, 2022, 'Fiction', 1),
+          (2, 'Code & Chai', 499.00, 2024, 'Technology', 2),
+          (3, 'River of Stars', 275.00, 2021, 'Fiction', 1),
+          (4, 'SQL Made Simple', 420.00, 2023, 'Technology', 3);
+
+        INSERT INTO Students VALUES
+          (101, 'Anu', 'anu@example.com'),
+          (102, 'Ravi', 'ravi@example.com'),
+          (103, 'Maya', 'maya@example.com');
+
+        INSERT INTO Borrow VALUES
+          (1, 101, 1, '2026-01-10', NULL),
+          (2, 102, 2, '2026-02-12', '2026-02-20');
+      `);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+// AI: generate SQL and explain it to the student.
+function stripCodeFence(value) {
+  return String(value || '')
+    .replace(/^```(?:sql)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+    .replace(/;\s*$/, '');
+}
+
+app.post('/api/chat', async (req, res) => {
+  if (!ai) {
+    return res.status(503).json({
+      error: 'AI is not configured. Set OPENAI_API_KEY in your .env file.'
+    });
+  }
+
+  try {
+    const question = String(req.body?.question || '')
+      .trim()
+      .slice(0, 500);
+
+    if (question.length < 3) {
       return res.status(400).json({
-        error: "Please enter a question."
+        error: 'Please ask a question with at least 3 characters.'
       });
     }
 
-
-    const response = await ai.responses.create({
-      model: "gpt-5.5",
-      instructions: `
-        You are SQL Mentor, a friendly database tutor.
-        Teach SQL clearly with examples.
-        Help students understand errors and learn step by step.
-        Use MySQL syntax.
-        Never claim to have executed a query.
-        Explain dangerous commands such as DROP and TRUNCATE.
-      `,
-      input: `
-        Student question: ${question}
-        Current SQL: ${sql || "(not provided)"}
-        Database context: ${context || "(not provided)"}
-      `
+    const sqlResponse = await ai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Convert the student question into ONE SQLite SQL statement. ' +
+            'Return only SQL, without markdown or explanation. ' +
+            'Use SQLite syntax. Do not generate multiple statements. ' +
+            'If the question cannot be answered using the schema, return UNSUPPORTED.\n' +
+            'Schema:\n' + LIBRARY_SCHEMA
+        },
+        { role: 'user', content: question }
+      ]
     });
 
-    res.json({ answer: response.output_text });
+    let sql = stripCodeFence(
+      sqlResponse.choices[0]?.message?.content || ''
+    );
+
+    if (!sql || /^UNSUPPORTED$/i.test(sql)) {
+      return res.json({
+        sql: '',
+        explanation:
+          'Try asking about Authors, Books, Students, Borrow, or StudentProgress.'
+      });
+    }
+
+    // Reject multiple statements rather than silently executing a partial query.
+    if (sql.includes(';')) {
+      return res.status(400).json({
+        error: 'The AI returned multiple SQL statements. Please try again.'
+      });
+    }
+
+    const explanationResponse = await ai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Explain this SQLite query to a beginner in 3-5 short sentences. ' +
+            'Do not use a code block.'
+        },
+        {
+          role: 'user',
+          content: `Question: ${question}\nSQL: ${sql}\nExplain the query.`
+        }
+      ]
+    });
+
+    res.json({
+      sql,
+      explanation:
+        explanationResponse.choices[0]?.message?.content?.trim() || ''
+    });
   } catch (error) {
-    console.error("AI request failed:", error.message);
+    console.error('Chat error:', error.message);
     res.status(500).json({
-      error: "AI help is temporarily unavailable."
+      error: 'AI request failed. Check your API key and connection.'
     });
   }
 });
 
-async function ensureAppTables() {
-  await pool.query(`CREATE TABLE IF NOT EXISTS students (
-    id CHAR(36) PRIMARY KEY,
-    display_name VARCHAR(50) NOT NULL,
-    name_key VARCHAR(100) NOT NULL UNIQUE,
-    student_db VARCHAR(64) NOT NULL UNIQUE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_seen TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  ) ENGINE=InnoDB`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS attempts (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    student_id CHAR(36) NOT NULL,
-    topic VARCHAR(80) NOT NULL DEFAULT 'General',
-    question_text VARCHAR(500) NOT NULL DEFAULT '',
-    sql_text TEXT NOT NULL,
-    succeeded BOOLEAN NOT NULL,
-    rows_affected INT NOT NULL DEFAULT 0,
-    error_message VARCHAR(500) NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_attempts_student_date (student_id, created_at),
-    CONSTRAINT fk_attempt_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
-  ) ENGINE=InnoDB`);
-}
+// Classroom demo only: using a name is NOT secure authentication.
+app.post('/api/session', (req, res) => {
+  let studentDb;
 
-async function seedStudentDatabase(dbName) {
-  // dbName is generated by the server and checked against a strict identifier pattern.
-  if (!/^sqlm_[a-f0-9]{32}$/.test(dbName)) throw new Error('Invalid generated database identifier');
-  await pool.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  const conn = await mysql.createConnection({host:process.env.DB_HOST,port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:dbName,multipleStatements:false,charset:'utf8mb4'});
-  try {
-    await conn.query(`CREATE TABLE IF NOT EXISTS Authors (author_id INT PRIMARY KEY, author_name VARCHAR(100) NOT NULL)`);
-    await conn.query(`CREATE TABLE IF NOT EXISTS Books (book_id INT PRIMARY KEY, title VARCHAR(200) NOT NULL, price DECIMAL(10,2), year INT, category VARCHAR(80), author_id INT, CONSTRAINT fk_books_author FOREIGN KEY (author_id) REFERENCES Authors(author_id))`);
-    await conn.query(`CREATE TABLE IF NOT EXISTS Students (student_id INT PRIMARY KEY, name VARCHAR(100) NOT NULL, email VARCHAR(150))`);
-    await conn.query(`CREATE TABLE IF NOT EXISTS Borrow (borrow_id INT PRIMARY KEY, student_id INT NOT NULL, book_id INT NOT NULL, borrow_date DATE, return_date DATE NULL)`);
-    await conn.query(`CREATE TABLE IF NOT EXISTS StudentProgress (progress_id INT AUTO_INCREMENT PRIMARY KEY, topic VARCHAR(80) NOT NULL, attempts INT NOT NULL DEFAULT 0, correct INT NOT NULL DEFAULT 0, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)`);
-    // Seed once only. INSERT IGNORE avoids duplicate rows when a student returns.
-    await conn.query(`INSERT IGNORE INTO Authors (author_id, author_name) VALUES (1,'Meera Nair'),(2,'Arun Das'),(3,'Kavya Menon')`);
-    await conn.query(`INSERT IGNORE INTO Books (book_id,title,price,year,category,author_id) VALUES (1,'The Silent Shore',350.00,2022,'Fiction',1),(2,'Code & Chai',499.00,2024,'Technology',2),(3,'River of Stars',275.00,2021,'Fiction',1),(4,'SQL Made Simple',420.00,2023,'Technology',3)`);
-    await conn.query(`INSERT IGNORE INTO Students (student_id,name,email) VALUES (101,'Anu','anu@example.com'),(102,'Ravi','ravi@example.com'),(103,'Maya','maya@example.com')`);
-    await conn.query(`INSERT IGNORE INTO Borrow (borrow_id,student_id,book_id,borrow_date,return_date) VALUES (1,101,1,'2026-01-10',NULL),(2,102,2,'2026-02-12','2026-02-20')`);
-  } finally { await conn.end(); }
-}
-
-function validateStudentSql(sql) {
-  if (typeof sql !== 'string' || !sql.trim() || sql.length > 10000) throw new Error('Enter a SQL statement (maximum 10,000 characters).');
-  const text = sql.trim();
-  // Single statement only. mysql2 also has multipleStatements disabled.
-  const withoutFinalSemicolon = text.replace(/;\s*$/, '');
-  if (withoutFinalSemicolon.includes(';')) throw new Error('Run one SQL statement at a time.');
-  const upper = withoutFinalSemicolon.toUpperCase();
-  const allowed = /^(SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE|ALTER\s+TABLE|TRUNCATE\s+TABLE|DROP\s+TABLE|SHOW\s+TABLES|DESCRIBE|DESC)\b/;
-  if (!allowed.test(upper)) throw new Error('Allowed commands: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, TRUNCATE TABLE, DROP TABLE, SHOW TABLES, and DESCRIBE.');
-  const denied = [
-    /\b(INTO\s+OUTFILE|INTO\s+DUMPFILE|LOAD_FILE|LOAD\s+DATA|GRANT|REVOKE|CREATE\s+USER|DROP\s+USER|ALTER\s+USER|CREATE\s+DATABASE|DROP\s+DATABASE|USE\s+|INFORMATION_SCHEMA|PERFORMANCE_SCHEMA)\b/i,
-    /\b(?:sqlm_[a-f0-9]{32}|sql_mentor_app)\s*\./i,
-    /\b(SLEEP|BENCHMARK|SHUTDOWN|INSTALL|UNINSTALL|CALL|DO)\s*\(/i,
-    /\/\*[\s\S]*?\*\//
-  ];
-  if (denied.some((re) => re.test(withoutFinalSemicolon))) throw new Error('That SQL feature is disabled in the learning sandbox.');
-  return withoutFinalSemicolon;
-}
-
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'SQL Mentor API' }));
-
-// Name-only profile lookup is intentionally a classroom-demo convenience, NOT authentication.
-// Anyone who knows a student's name may be able to open that profile. Do not use for sensitive data.
-app.post('/api/session', async (req, res) => {
   try {
     const displayName = cleanName(req.body?.name);
-    if (displayName.length < 2) return res.status(400).json({ error: 'Enter a name with at least 2 characters.' });
+
+    if (displayName.length < 2) {
+      return res.status(400).json({
+        error: 'Enter a name with at least 2 characters.'
+      });
+    }
+
     const nameKey = displayName.toLocaleLowerCase('en-US');
-    const [existing] = await pool.execute('SELECT id, display_name, student_db FROM students WHERE name_key = ?', [nameKey]);
-    let student;
-    if (existing.length) {
-      student = existing[0];
-    } else {
+
+    let student = mainDb.prepare(
+      'SELECT id, display_name, student_db FROM students WHERE name_key = ?'
+    ).get(nameKey);
+
+    if (!student) {
       const studentId = id();
       const dbName = 'sqlm_' + crypto.randomBytes(16).toString('hex');
-      try {
-        await pool.execute('INSERT INTO students (id, display_name, name_key, student_db) VALUES (?, ?, ?, ?)', [studentId, displayName, nameKey, dbName]);
-      } catch (e) {
-        if (e.code !== 'ER_DUP_ENTRY') throw e;
-      }
-      const [rows] = await pool.execute('SELECT id, display_name, student_db FROM students WHERE name_key = ?', [nameKey]);
-      student = rows[0];
+
+      mainDb.prepare(`
+        INSERT INTO students (id, display_name, name_key, student_db)
+        VALUES (?, ?, ?, ?)
+      `).run(studentId, displayName, nameKey, dbName);
+
+      student = {
+        id: studentId,
+        display_name: displayName,
+        student_db: dbName
+      };
     }
-    await seedStudentDatabase(student.student_db);
-    const progress = await getProgress(student.id);
-    res.json({ studentId: student.id, name: student.display_name, progress });
-  } catch (e) {
-    console.error('Session error:', e.message);
-    res.status(500).json({ error: 'Could not load the student profile. Check the server/database configuration.' });
+
+    mainDb.prepare(
+      "UPDATE students SET last_seen = CURRENT_TIMESTAMP WHERE id = ?"
+    ).run(student.id);
+
+    seedStudentDatabase(student.student_db);
+
+    res.json({
+      studentId: student.id,
+      name: student.display_name,
+      progress: getProgress(student.id)
+    });
+  } catch (error) {
+    console.error('Session error:', error.message);
+    res.status(500).json({ error: 'Could not load the student profile.' });
   }
 });
 
-async function getProgress(studentId) {
-  const [[totals]] = await pool.execute('SELECT COUNT(*) AS attempts, COALESCE(SUM(succeeded),0) AS correct FROM attempts WHERE student_id = ?', [studentId]);
-  const [topics] = await pool.execute('SELECT topic, COUNT(*) AS attempts, COALESCE(SUM(succeeded),0) AS correct FROM attempts WHERE student_id = ? GROUP BY topic ORDER BY topic', [studentId]);
-  const [recent] = await pool.execute('SELECT topic, question_text, sql_text, succeeded, error_message, created_at FROM attempts WHERE student_id = ? ORDER BY id DESC LIMIT 10', [studentId]);
-  return { attempts: Number(totals.attempts), correct: Number(totals.correct), topics, recent };
+function getProgress(studentId) {
+  const totals = mainDb.prepare(`
+    SELECT COUNT(*) AS attempts,
+           COALESCE(SUM(succeeded), 0) AS correct
+    FROM attempts WHERE student_id = ?
+  `).get(studentId);
+
+  const topics = mainDb.prepare(`
+    SELECT topic,
+           COUNT(*) AS attempts,
+           COALESCE(SUM(succeeded), 0) AS correct
+    FROM attempts
+    WHERE student_id = ?
+    GROUP BY topic
+    ORDER BY topic
+  `).all(studentId);
+
+  const recent = mainDb.prepare(`
+    SELECT topic, question_text, sql_text, succeeded,
+           error_message, created_at
+    FROM attempts
+    WHERE student_id = ?
+    ORDER BY id DESC LIMIT 10
+  `).all(studentId);
+
+  return {
+    attempts: Number(totals.attempts),
+    correct: Number(totals.correct),
+    topics,
+    recent
+  };
 }
 
-app.get('/api/progress/:studentId', async (req, res) => {
-  try {
-    const [rows] = await pool.execute('SELECT id FROM students WHERE id = ?', [req.params.studentId]);
-    if (!rows.length) return res.status(404).json({ error: 'Student profile not found.' });
-    res.json(await getProgress(req.params.studentId));
-  } catch (e) { console.error(e.message); res.status(500).json({ error: 'Could not load progress.' }); }
+app.get('/api/progress/:studentId', (req, res) => {
+  const student = mainDb.prepare(
+    'SELECT id FROM students WHERE id = ?'
+  ).get(req.params.studentId);
+
+  if (!student) {
+    return res.status(404).json({ error: 'Student profile not found.' });
+  }
+
+  res.json(getProgress(student.id));
 });
 
-app.get('/api/tables/:studentId', async (req, res) => {
+app.get('/api/tables/:studentId', (req, res) => {
+  let db;
+
   try {
-    const [rows] = await pool.execute('SELECT student_db FROM students WHERE id = ?', [req.params.studentId]);
-    if (!rows.length) return res.status(404).json({ error: 'Student profile not found.' });
-    const conn = await mysql.createConnection({host:process.env.DB_HOST,port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:rows[0].student_db,multipleStatements:false,charset:'utf8mb4'});
-    try {
-      const [tables] = await conn.query('SHOW TABLES');
-      const result = [];
-      for (const row of tables) {
-        const tableName = Object.values(row)[0];
-        // Table name came from SHOW TABLES and is quoted before use.
-        const safeName = String(tableName).replace(/`/g, '``');
-        const [columns] = await conn.query(`SHOW COLUMNS FROM \`${safeName}\``);
-        result.push({ name: tableName, columns: columns.map(c => ({ name: c.Field, type: c.Type, key: c.Key || '' })) });
-      }
-      res.json({ tables: result });
-    } finally { await conn.end(); }
-  } catch (e) { console.error(e.message); res.status(500).json({ error: 'Could not load table definitions.' }); }
+    const student = mainDb.prepare(
+      'SELECT student_db FROM students WHERE id = ?'
+    ).get(req.params.studentId);
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student profile not found.' });
+    }
+
+    db = getStudentDb(student.student_db);
+
+    const tables = db.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all();
+
+    const result = tables.map(table => {
+      const columns = db.prepare(
+        `PRAGMA table_info("${table.name.replace(/"/g, '""')}")`
+      ).all();
+
+      return {
+        name: table.name,
+        columns: columns.map(column => ({
+          name: column.name,
+          type: column.type,
+          key: column.pk ? 'PRI' : ''
+        }))
+      };
+    });
+
+    res.json({ tables: result });
+  } catch (error) {
+    console.error('Tables API error:', error.message);
+    res.status(500).json({ error: 'Could not load table definitions.' });
+  } finally {
+    if (db) db.close();
+  }
 });
 
-app.post('/api/query', async (req, res) => {
+// Restrict the learning SQL to one statement and supported operations.
+// This is a classroom safeguard, not a complete SQL security sandbox.
+function validateStudentSql(sql) {
+  if (typeof sql !== 'string' || !sql.trim() || sql.length > 10000) {
+    throw new Error('Enter a SQL statement (maximum 10,000 characters).');
+  }
+
+  const text = sql.trim();
+  const query = text.replace(/;\s*$/, '');
+
+  if (query.includes(';')) {
+    throw new Error('Run one SQL statement at a time.');
+  }
+
+  const allowed =
+    /^(SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE|SHOW\s+TABLES|DESCRIBE|DESC)\b/i;
+
+  if (!allowed.test(query)) {
+    throw new Error(
+      'Allowed commands: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, ' +
+      'ALTER TABLE, DROP TABLE, SHOW TABLES, DESCRIBE and TRUNCATE TABLE.'
+    );
+  }
+
+  if (/\/\*[\s\S]*?\*\//.test(query) ||
+      /--/.test(query) ||
+      /\b(ATTACH|DETACH|PRAGMA|VACUUM|LOAD_EXTENSION|READFILE|WRITEFILE)\b/i.test(query)) {
+    throw new Error('That SQL feature is disabled in the learning sandbox.');
+  }
+
+  return query;
+}
+
+// Translate a few common MySQL classroom commands to SQLite equivalents.
+function translateSql(sql) {
+  if (/^SHOW\s+TABLES$/i.test(sql.trim())) {
+    return {
+      sql: `SELECT name AS "Tables_in_database"
+            FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY name`,
+      command: 'SELECT'
+    };
+  }
+
+  const describe = sql.match(/^(?:DESCRIBE|DESC)\s+([a-zA-Z_][a-zA-Z0-9_]*)$/i);
+
+  if (describe) {
+    return {
+      sql: `PRAGMA table_info("${describe[1]}")`,
+      command: 'PRAGMA'
+    };
+  }
+
+  const truncate = sql.match(/^TRUNCATE\s+TABLE\s+([a-zA-Z_][a-zA-Z0-9_]*)$/i);
+
+  if (truncate) {
+    return {
+      sql: `DELETE FROM "${truncate[1]}"`,
+      command: 'DELETE'
+    };
+  }
+
+  return {
+    sql,
+    command: sql.match(/^([a-z]+)/i)?.[1].toUpperCase() || 'SQL'
+  };
+}
+
+app.post('/api/query', (req, res) => {
   const studentId = String(req.body?.studentId || '');
   const topic = String(req.body?.topic || 'General').slice(0, 80);
   const question = String(req.body?.question || '').slice(0, 500);
+
   let sql;
-  try { sql = validateStudentSql(req.body?.sql); }
-  catch (e) { return res.status(400).json({ error: e.message }); }
-  let student;
+
   try {
-    const [rows] = await pool.execute('SELECT id, student_db FROM students WHERE id = ?', [studentId]);
-    if (!rows.length) return res.status(404).json({ error: 'Student profile not found. Enter your name again.' });
-    student = rows[0];
-    const conn = await mysql.createConnection({host:process.env.DB_HOST,port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:student.student_db,multipleStatements:false,charset:'utf8mb4'});
+    sql = validateStudentSql(req.body?.sql);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  const student = mainDb.prepare(
+    'SELECT id, student_db FROM students WHERE id = ?'
+  ).get(studentId);
+
+  if (!student) {
+    return res.status(404).json({
+      error: 'Student profile not found. Enter your name again.'
+    });
+  }
+
+  let db;
+
+  try {
+    db = getStudentDb(student.student_db);
+
+    const translated = translateSql(sql);
+    const command = translated.command;
     let result;
+
+    if (command === 'SELECT' || command === 'PRAGMA') {
+      const rows = db.prepare(translated.sql).all();
+
+      result = {
+        columns: rows.length ? Object.keys(rows[0]) : [],
+        rows: rows.slice(0, 100),
+        rowsAffected: rows.length,
+        command
+      };
+    } else {
+      const statement = db.prepare(translated.sql);
+      const info = statement.run();
+
+      result = {
+        columns: [],
+        rows: [],
+        rowsAffected: Number(info.changes || 0),
+        command
+      };
+    }
+
+    mainDb.prepare(`
+      INSERT INTO attempts
+        (student_id, topic, question_text, sql_text, succeeded, rows_affected)
+      VALUES (?, ?, ?, ?, 1, ?)
+    `).run(student.id, topic, question, sql, result.rowsAffected);
+
+    res.json({ ...result, progress: getProgress(student.id) });
+  } catch (error) {
     try {
-      const [data] = await conn.query({ sql, timeout: 4000 });
-      if (Array.isArray(data)) {
-        result = { columns: data.length ? Object.keys(data[0]) : [], rows: data.slice(0, 100), rowsAffected: data.length, command: 'SELECT' };
-      } else {
-        result = { columns: [], rows: [], rowsAffected: Number(data.affectedRows || 0), command: sql.split(/\s+/)[0].toUpperCase() };
-      }
-      await pool.execute('INSERT INTO attempts (student_id, topic, question_text, sql_text, succeeded, rows_affected) VALUES (?, ?, ?, ?, 1, ?)', [student.id, topic, question, sql, result.rowsAffected]);
-    } catch (e) {
-      await pool.execute('INSERT INTO attempts (student_id, topic, question_text, sql_text, succeeded, rows_affected, error_message) VALUES (?, ?, ?, ?, 0, 0, ?)', [student.id, topic, question, sql, String(e.message || 'SQL error').slice(0, 500)]);
-      return res.status(400).json({ error: String(e.sqlMessage || e.message || 'SQL execution failed').slice(0, 500) });
-    } finally { await conn.end(); }
-    res.json({ ...result, progress: await getProgress(student.id) });
-  } catch (e) {
-    console.error('Query API error:', e.message);
-    res.status(500).json({ error: 'The query could not be processed.' });
+      mainDb.prepare(`
+        INSERT INTO attempts
+          (student_id, topic, question_text, sql_text, succeeded, rows_affected, error_message)
+        VALUES (?, ?, ?, ?, 0, 0, ?)
+      `).run(
+        student.id,
+        topic,
+        question,
+        sql,
+        String(error.message || 'SQL error').slice(0, 500)
+      );
+    } catch (historyError) {
+      console.error('Could not save attempt:', historyError.message);
+    }
+
+    res.status(400).json({
+      error: String(error.message || 'SQL execution failed').slice(0, 500)
+    });
+  } finally {
+    if (db) db.close();
   }
 });
 
-const port = Number(process.env.PORT || 3000);
-async function start() {
-  if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME) {
-    console.error('Missing DB_HOST, DB_USER, or DB_NAME. Copy .env.example to .env and configure it.');
-    process.exit(1);
-  }
-  await pool.query('SELECT 1');
-  await ensureAppTables();
-  app.listen(port, () => console.log(`SQL Mentor running on http://localhost:${port}`));
-}
-start().catch((e) => { console.error('Startup failed:', e.message); process.exit(1); });
+function start() {
+  mainDb.prepare('SELECT 1').get();
 
+  app.listen(PORT, () => {
+    console.log(`SQL Mentor running on http://localhost:${PORT}`);
+    console.log('Database: SQLite (node:sqlite)');
+  });
+}
+
+start();
